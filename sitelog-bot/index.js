@@ -82,12 +82,16 @@ bot.command('gallery', (ctx) => {
         .update(userId)
         .digest('hex');
 
-    // Telegram API blocks 'localhost' inside Inline Buttons for security reasons.
-    // For local testing, we must send it as plain text. When deployed to Vercel, 
-    // we can safely upgrade this to a button.
-    const galleryUrl = `http://localhost:3000/api/auth/bot?uid=${userId}&token=${token}`;
+    const baseUrl = process.env.WEBAPP_URL || 'http://localhost:3000';
+    const galleryUrl = `${baseUrl}/api/auth/bot?uid=${userId}&token=${token}`;
 
-    ctx.reply(`Here is your secure link to the SiteLog Dashboard:\n\n${galleryUrl}`);
+    ctx.reply('🏗️ Open your SiteLog Dashboard:', {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '📊 Open Dashboard', url: galleryUrl }]
+            ]
+        }
+    });
 });
 
 // Helper function to process all media types
