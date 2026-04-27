@@ -11,6 +11,9 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 // (In a full app, this would be read from a database table)
 const activeProjects = new Map();
 
+// Conversational state: tracks when a user is mid-flow (e.g. waiting to type a project name)
+const userStates = new Map();
+
 bot.start((ctx) => {
     ctx.reply(
         "Welcome to SiteLog! 🏗️\n\n" +
@@ -21,12 +24,8 @@ bot.start((ctx) => {
     );
 });
 
-bot.command('newproject', async (ctx) => {
-    const projectName = ctx.message.text.split(' ').slice(1).join(' ');
-    if (!projectName) {
-        return ctx.reply("Please provide a project name. Example: /newproject Ikoyi Mall");
-    }
-
+// --- Helper: Create a new project ---
+async function createProject(ctx, projectName) {
     const inviteToken = crypto.randomBytes(3).toString('hex').toUpperCase();
 
     const { data, error } = await supabase
@@ -40,23 +39,17 @@ bot.command('newproject', async (ctx) => {
         return ctx.reply("Error creating project. Please try again.");
     }
 
-    // Auto-join the project they just created
     activeProjects.set(ctx.from.id, data.id);
 
     ctx.reply(
         `✅ Project "${projectName}" created!\n\n` +
-        `Your Invite Token is: ${inviteToken}\n\n` +
+        `Your Invite Token is: \`${inviteToken}\`\n\n` +
         `You are now actively logging to this project. Just send a photo, video, or note!`
     );
-});
+}
 
-bot.command('join', async (ctx) => {
-    const token = ctx.message.text.split(' ')[1];
-    
-    if (!token) {
-        return ctx.reply("Please provide an invite token. Example: /join A1B2C3");
-    }
-
+// --- Helper: Join an existing project ---
+async function joinProject(ctx, token) {
     const { data, error } = await supabase
         .from('projects')
         .select('*')
@@ -67,10 +60,42 @@ bot.command('join', async (ctx) => {
         return ctx.reply("❌ Invalid invite token. Please check and try again.");
     }
 
-    // Set their active project
     activeProjects.set(ctx.from.id, data.id);
 
     ctx.reply(`✅ Successfully joined: "${data.name}"!\n\nYou are now actively logging to this project. Just send a photo, video, or note!`);
+}
+
+bot.command('newproject', async (ctx) => {
+    const projectName = ctx.message.text.split(' ').slice(1).join(' ');
+    if (!projectName) {
+        // No name provided — start conversational flow
+        userStates.set(ctx.from.id, { action: 'awaiting_project_name' });
+        return ctx.reply("What would you like to name your project?", {
+            reply_markup: {
+                force_reply: true,
+                input_field_placeholder: "e.g. Ikoyi Mall"
+            }
+        });
+    }
+
+    await createProject(ctx, projectName);
+});
+
+bot.command('join', async (ctx) => {
+    const token = ctx.message.text.split(' ')[1];
+    
+    if (!token) {
+        // No token provided — start conversational flow
+        userStates.set(ctx.from.id, { action: 'awaiting_join_token' });
+        return ctx.reply("Enter the invite token you received:", {
+            reply_markup: {
+                force_reply: true,
+                input_field_placeholder: "e.g. A1B2C3"
+            }
+        });
+    }
+
+    await joinProject(ctx, token);
 });
 
 bot.command('gallery', (ctx) => {
@@ -176,11 +201,25 @@ bot.on('document', async (ctx) => {
     await handleMedia(ctx, 'document', doc.file_id, ctx.message.caption);
 });
 
-// Text Note Handler
+// Text Note Handler (also handles conversational flow replies)
 bot.on('text', async (ctx) => {
     // Ignore commands (they are handled above)
     if (ctx.message.text.startsWith('/')) return;
 
+    // Check if this user is mid-conversation (e.g. replying with a project name)
+    const state = userStates.get(ctx.from.id);
+    if (state) {
+        userStates.delete(ctx.from.id); // Clear state immediately
+
+        if (state.action === 'awaiting_project_name') {
+            return await createProject(ctx, ctx.message.text.trim());
+        }
+        if (state.action === 'awaiting_join_token') {
+            return await joinProject(ctx, ctx.message.text.trim());
+        }
+    }
+
+    // Otherwise, treat as a text note log
     const projectId = activeProjects.get(ctx.from.id);
     if (!projectId) {
         return ctx.reply("⚠️ Please /join a project or create a /newproject before logging updates!");
