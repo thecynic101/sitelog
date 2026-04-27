@@ -107,7 +107,15 @@ bot.command('gallery', (ctx) => {
         .update(userId)
         .digest('hex');
 
-    const baseUrl = process.env.WEBAPP_URL || 'http://localhost:3000';
+    const baseUrl = process.env.WEBAPP_URL;
+    
+    if (!baseUrl) {
+        // Local dev fallback: Telegram blocks localhost in inline buttons,
+        // so send as plain text instead
+        const galleryUrl = `http://localhost:3000/api/auth/bot?uid=${userId}&token=${token}`;
+        return ctx.reply(`Here is your SiteLog Dashboard link:\n\n${galleryUrl}`);
+    }
+
     const galleryUrl = `${baseUrl}/api/auth/bot?uid=${userId}&token=${token}`;
 
     ctx.reply('🏗️ Open your SiteLog Dashboard:', {
