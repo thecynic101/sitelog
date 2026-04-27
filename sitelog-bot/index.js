@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
+const http = require('http');
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -198,8 +199,27 @@ bot.on('text', async (ctx) => {
     ctx.reply("📝 Text update logged!");
 });
 
+// Setup Telegram Menu Commands
+bot.telegram.setMyCommands([
+    { command: 'start', description: 'Show welcome message' },
+    { command: 'newproject', description: 'Create a new SiteLog project' },
+    { command: 'join', description: 'Join an existing project with a token' },
+    { command: 'gallery', description: 'Get your secure login link to the web dashboard' }
+]);
+
 bot.launch().then(() => {
     console.log("🏗️ SiteLog Bot is running with Media Handlers!");
+});
+
+// Create a dummy HTTP server to satisfy Render's Web Service requirements
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('SiteLog Bot is running!');
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Dummy web server listening on port ${PORT}`);
 });
 
 // Enable graceful stop
