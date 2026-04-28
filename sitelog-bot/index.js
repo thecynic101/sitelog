@@ -16,11 +16,17 @@ const userStates = new Map();
 
 bot.start((ctx) => {
     ctx.reply(
-        "Welcome to SiteLog! 🏗️\n\n" +
-        "To get started, you can either:\n" +
-        "1. Create a new project: /newproject [Name]\n" +
-        "2. Join an existing project: /join [Token]\n\n" +
-        "Example: /newproject Ikoyi Mall"
+        "Welcome to SiteLog! 🏗️\n\nWhat would you like to do?",
+        {
+            reply_markup: {
+                keyboard: [
+                    [{ text: '🏗️ New Project' }, { text: '🤝 Join Project' }],
+                    [{ text: '📊 Dashboard' }]
+                ],
+                resize_keyboard: true,
+                is_persistent: true
+            }
+        }
     );
 });
 
@@ -65,40 +71,45 @@ async function joinProject(ctx, token) {
     ctx.reply(`✅ Successfully joined: "${data.name}"!\n\nYou are now actively logging to this project. Just send a photo, video, or note!`);
 }
 
+function promptNewProject(ctx) {
+    userStates.set(ctx.from.id, { action: 'awaiting_project_name' });
+    return ctx.reply("What would you like to name your project?", {
+        reply_markup: {
+            force_reply: true,
+            input_field_placeholder: "e.g. Ikoyi Mall"
+        }
+    });
+}
+
 bot.command('newproject', async (ctx) => {
     const projectName = ctx.message.text.split(' ').slice(1).join(' ');
     if (!projectName) {
-        // No name provided — start conversational flow
-        userStates.set(ctx.from.id, { action: 'awaiting_project_name' });
-        return ctx.reply("What would you like to name your project?", {
-            reply_markup: {
-                force_reply: true,
-                input_field_placeholder: "e.g. Ikoyi Mall"
-            }
-        });
+        return promptNewProject(ctx);
     }
-
     await createProject(ctx, projectName);
 });
+bot.hears('🏗️ New Project', promptNewProject);
+
+function promptJoinProject(ctx) {
+    userStates.set(ctx.from.id, { action: 'awaiting_join_token' });
+    return ctx.reply("Enter the invite token you received:", {
+        reply_markup: {
+            force_reply: true,
+            input_field_placeholder: "e.g. A1B2C3"
+        }
+    });
+}
 
 bot.command('join', async (ctx) => {
     const token = ctx.message.text.split(' ')[1];
-    
     if (!token) {
-        // No token provided — start conversational flow
-        userStates.set(ctx.from.id, { action: 'awaiting_join_token' });
-        return ctx.reply("Enter the invite token you received:", {
-            reply_markup: {
-                force_reply: true,
-                input_field_placeholder: "e.g. A1B2C3"
-            }
-        });
+        return promptJoinProject(ctx);
     }
-
     await joinProject(ctx, token);
 });
+bot.hears('🤝 Join Project', promptJoinProject);
 
-bot.command('gallery', (ctx) => {
+async function sendDashboardLink(ctx) {
     const userId = ctx.from.id.toString();
     
     // Generate the secure hash using the exact same Bot Token secret as the frontend
@@ -125,7 +136,10 @@ bot.command('gallery', (ctx) => {
             ]
         }
     });
-});
+}
+
+bot.command('gallery', sendDashboardLink);
+bot.hears('📊 Dashboard', sendDashboardLink);
 
 // Helper function to process all media types
 async function handleMedia(ctx, type, fileId, caption = '') {
@@ -252,10 +266,10 @@ bot.on('text', async (ctx) => {
 
 // Setup Telegram Menu Commands
 bot.telegram.setMyCommands([
-    { command: 'start', description: 'Show welcome message' },
-    { command: 'newproject', description: 'Create a new SiteLog project' },
-    { command: 'join', description: 'Join an existing project with a token' },
-    { command: 'gallery', description: 'Get your secure login link to the web dashboard' }
+    { command: 'start', description: 'Start' },
+    { command: 'newproject', description: 'New project' },
+    { command: 'join', description: 'Join project' },
+    { command: 'gallery', description: 'Dashboard' }
 ]);
 
 bot.launch().then(() => {
